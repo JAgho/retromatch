@@ -4,7 +4,7 @@ import csv
 
 #Open a csv file and set it up to receive comma delimited input
 logging = open('logging.csv',mode='a')
-writer = csv.writer(logging, delimiter=",",quoting=csv.QUOTE_NONE)
+writer = csv.writer(logging, delimiter=",",lineterminator="\n", quoting=csv.QUOTE_NONE)
 
 #Open a serial port that is connected to an Arduino (below is Linux, Windows and Mac would be "COM4" or similar)
 #No timeout specified; program will wait until all serial data is received from Arduino
@@ -28,7 +28,7 @@ while True:
     print(decoded_bytes)
     #Retreive current time
     c = datetime.now()
-    current_time = c.strftime('%H:%M:%S')
+    current_time = c.strftime('%H:%M:%S.%f')[:-3]
     print(current_time)
     
     #If Arduino has sent a string "stop", exit loop
