@@ -28,31 +28,26 @@ while (True):
 
     ser.flushInput()
     ser.flushOutput()
+    
+    if ser.in_waiting < 12:
 
-    first_ser_bytes = ser.read(size=2)
-    first_decoded_bytes = bitarray(first_ser_bytes, endian = 'little')
-    first_decoded_bytes_int = int.from_bytes(first_decoded_bytes, byteorder='little',signed=True)
-    print(first_decoded_bytes_int)
+        first_ser_bytes = ser.read(size=4)
+        first_decoded_bytes = bitarray(first_ser_bytes, endian = 'little')
+        signal = int.from_bytes(first_decoded_bytes, byteorder='little',signed=False)
+        print(signal)
 
-    middle_ser_bytes = ser.read(size=2)
-    middle_decoded_bytes = bitarray(middle_ser_bytes, endian = 'little')
-    middle_decoded_bytes_int = int.from_bytes(middle_decoded_bytes, byteorder='little',signed=True)
-    print(middle_decoded_bytes_int)
-
-
-    last_ser_bytes = ser.read(size=4)
-    #Convert received bytes to int format
-    last_decoded_bytes = bitarray(last_ser_bytes, endian = 'little')
-    last_decoded_bytes_int = int.from_bytes(last_decoded_bytes, byteorder='little', signed=False)
-    print(last_decoded_bytes_int)
+        #middle_ser_bytes = ser.read_until(b'~\x10\x00\x00')
+        middle_ser_bytes = ser.read(size=4)
+        middle_decoded_bytes = bitarray(middle_ser_bytes, endian = 'little')
+        funny_no = int.from_bytes(middle_ser_bytes, byteorder='little',signed=False)
+        print(funny_no)
 
 
-
-
-
-
-
-
+        last_ser_bytes = ser.read(size=4)
+        #Convert received bytes to int format
+        last_decoded_bytes = bitarray(last_ser_bytes, endian = 'little')
+        time = int.from_bytes(last_decoded_bytes, byteorder='little', signed=False)
+        print(time)
     
     # ser_bytes = decoded_bytes[0] #Splits bpm from corregated string
     # ser_millis = int(decoded_bytes[1]) #Time in millis from arduino start

@@ -9,8 +9,8 @@
 --------------------------------------------------------------------*/
 #include <PulseSensorPlayground.h>     // Includes the PulseSensorPlayground Library. 
 
-int funnyno = 4222;
-int Signal;                // holds the incoming raw data. Signal value can range from 0-1024
+unsigned long funnyno = 4222;
+unsigned long Signal;                // holds the incoming raw data. Signal value can range from 0-1024
 const int PulseWire = 0;       // PulseSensor PURPLE WIRE connected to ANALOG PIN 0
 const int LED = LED_BUILTIN;          // The on-board Arduino LED, close to PIN 13.
 int Threshold = 550;           // Determine which Signal to "count as a beat" and which to ignore.
@@ -48,8 +48,8 @@ void loop() {
   //output1.S = Signal;
   //output1.T = time;
 
-  Serial.write((byte*)&Signal, sizeof(Signal));     // sends 2 bytes
-  Serial.write((byte*)&funnyno, sizeof(funnyno));   // sends 2 bytes
+  Serial.write((byte*)&Signal, sizeof(Signal));     // sends 4 bytes
+  Serial.write((byte*)&funnyno, sizeof(funnyno));   // sends 4 bytes
   Serial.write((byte*)&time, sizeof(time));         // sends 4 bytes
   delay(20);       
 }
