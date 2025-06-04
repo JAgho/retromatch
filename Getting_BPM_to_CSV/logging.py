@@ -10,7 +10,7 @@ writer = csv.writer(logging, delimiter=",",lineterminator="\n", quoting=csv.QUOT
 #No timeout specified; program will wait until all serial data is received from Arduino
 #Port description will vary according to operating system. Linux will be in the form /dev/ttyXXXX
 #Windows and MAC will be COMX
-ser = serial.Serial(port='COM6',baudrate=115200)
+ser = serial.Serial(port='COM7',baudrate=115200)
 ser.flushInput()
 
 #Write out a single character encoded in utf-8; this is defalt encoding for Arduino serial comms

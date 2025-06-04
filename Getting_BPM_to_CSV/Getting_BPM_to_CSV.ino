@@ -10,7 +10,7 @@
 #include <PulseSensorPlayground.h>     // Includes the PulseSensorPlayground Library. 
 
 //  
-
+unsigned long time;
 const int PulseWire = 0;       // PulseSensor PURPLE WIRE connected to ANALOG PIN 0
 const int LED = LED_BUILTIN;          // The on-board Arduino LED, close to PIN 13.
 int Threshold = 550;           // Determine which Signal to "count as a beat" and which to ignore.
@@ -37,7 +37,8 @@ void setup() {
 void loop() {
   if (pulseSensor.sawStartOfBeat()) {            // Constantly test to see if "a beat happened".
     int myBPM = pulseSensor.getBeatsPerMinute();  // Calls function on our pulseSensor object that returns BPM as an "int".
-    Serial.println(myBPM);
+    time = millis();
+    Serial.println(String(time) +", "+ myBPM);
   }
 
   delay(20);       
