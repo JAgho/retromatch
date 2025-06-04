@@ -9,11 +9,12 @@
 --------------------------------------------------------------------*/
 #include <PulseSensorPlayground.h>     // Includes the PulseSensorPlayground Library. 
 
-//  
-unsigned long time;
+int funnyno = 4222;
+int Signal;                // holds the incoming raw data. Signal value can range from 0-1024
 const int PulseWire = 0;       // PulseSensor PURPLE WIRE connected to ANALOG PIN 0
 const int LED = LED_BUILTIN;          // The on-board Arduino LED, close to PIN 13.
 int Threshold = 550;           // Determine which Signal to "count as a beat" and which to ignore.
+unsigned long time;
                                // Use the "Gettting Started Project" to fine-tune Threshold Value beyond default setting.
                                // Otherwise leave the default "550" value. 
 PulseSensorPlayground pulseSensor;  // Creates an instance of the PulseSensorPlayground object called "pulseSensor"
@@ -33,13 +34,22 @@ void setup() {
   }
 }
 
+//struct Output {
+ // int S;
+  //int T;
+//};
 
 void loop() {
-  if (pulseSensor.sawStartOfBeat()) {            // Constantly test to see if "a beat happened".
-    int myBPM = pulseSensor.getBeatsPerMinute();  // Calls function on our pulseSensor object that returns BPM as an "int".
-    time = millis();
-    Serial.println(String(time) +","+ myBPM);
-  }
+  
+  Signal = analogRead(PulseWire);  // Read the PulseSensor's value.
+  time = millis();
 
+  //Output output1;
+  //output1.S = Signal;
+  //output1.T = time;
+
+  Serial.write((byte*)&Signal, sizeof(Signal));     // sends 2 bytes
+  Serial.write((byte*)&funnyno, sizeof(funnyno));   // sends 2 bytes
+  Serial.write((byte*)&time, sizeof(time));         // sends 4 bytes
   delay(20);       
 }

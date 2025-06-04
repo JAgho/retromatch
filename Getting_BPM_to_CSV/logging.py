@@ -1,6 +1,7 @@
 import serial
 from datetime import datetime, timedelta
 import csv
+from bitarray import bitarray
 
 #Open a csv file and set it up to receive comma delimited input
 logging = open('logging.csv',mode='a')
@@ -11,55 +12,71 @@ writer = csv.writer(logging, delimiter=",",lineterminator="\n", quoting=csv.QUOT
 #Port description will vary according to operating system. Linux will be in the form /dev/ttyXXXX
 #Windows and MAC will be COMX
 ser = serial.Serial(port='COM7',baudrate=115200)
-ser.flushInput()
 
 #Write out a single character encoded in utf-8; this is defalt encoding for Arduino serial comms
 #This character tells the Arduino to start sending data
 ser.write(bytes('x', 'utf-8'))
 
 datetime_ser = datetime.now()
-print(datetime_ser)
+#print(datetime_ser)
 #runs once at first send, gets time at first run
 
-ser_recieved = ser.readline()
-decoded_bytes = ser_recieved.decode("utf-8").strip().split(',')
-last_millis = int(decoded_bytes[1])
+ser.flushInput()
+ser.flushOutput()
+
+while (True):
+
+    ser.flushInput()
+    ser.flushOutput()
+
+    first_ser_bytes = ser.read(size=2)
+    first_decoded_bytes = bitarray(first_ser_bytes, endian = 'little')
+    first_decoded_bytes_int = int.from_bytes(first_decoded_bytes, byteorder='little',signed=True)
+    print(first_decoded_bytes_int)
+
+    middle_ser_bytes = ser.read(size=2)
+    middle_decoded_bytes = bitarray(middle_ser_bytes, endian = 'little')
+    middle_decoded_bytes_int = int.from_bytes(middle_decoded_bytes, byteorder='little',signed=True)
+    print(middle_decoded_bytes_int)
 
 
-while True:
-    #Read in data from Serial until \n (new line) received
-    ser_bytes = ser.readline()
-    #print(ser_bytes)
-    
-    #Convert received bytes to text format
-    decoded_bytes = (ser_bytes[0:len(ser_bytes)-2].decode("utf-8"))
-    print(decoded_bytes)
+    last_ser_bytes = ser.read(size=4)
+    #Convert received bytes to int format
+    last_decoded_bytes = bitarray(last_ser_bytes, endian = 'little')
+    last_decoded_bytes_int = int.from_bytes(last_decoded_bytes, byteorder='little', signed=False)
+    print(last_decoded_bytes_int)
 
-    decoded_bytes = decoded_bytes.split(',')
+
+
+
+
+
+
+
     
-    ser_bytes = decoded_bytes[0] #Splits bpm from corregated string
-    ser_millis = int(decoded_bytes[1]) #Time in millis from arduino start
+    # ser_bytes = decoded_bytes[0] #Splits bpm from corregated string
+    # ser_millis = int(decoded_bytes[1]) #Time in millis from arduino start
     
-    #difference in milliseconds between current and last data sent
-    diff_millis = ser_millis - last_millis
-    last_millis = ser_millis
+    # #difference in milliseconds between current and last data sent
+    # diff_millis = ser_millis - last_millis
+    # last_millis = ser_millis
 
     #print(ser_bytes)
 
     #adds the difference in ms to the current time
-    datetime_ser += timedelta(milliseconds=float(diff_millis))
+    #datetime_ser += timedelta(milliseconds=float(diff_millis))
     
-    print(datetime_ser)
+    #print(datetime_ser)
 
-    temp_time = datetime_ser.strftime('%H:%M:%S.%f')[:-3]
+    #temp_time = datetime_ser.strftime('%H:%M:%S.%f')[:-3]
 
     
     #If Arduino has sent a string "stop", exit loop
-    if (decoded_bytes == "stop"):
-        break
+    # if (decoded_bytes == "stop"):
+    #    break
     
     #Write received data to CSV file
-    writer.writerow([datetime_ser,*decoded_bytes])
+    #writer.writerow([datetime_ser,*decoded_bytes])
             
 # Close port and CSV file to exit
 ser.close()
