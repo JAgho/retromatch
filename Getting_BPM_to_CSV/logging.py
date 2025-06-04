@@ -59,7 +59,7 @@ while True:
         break
     
     #Write received data to CSV file
-    writer.writerow([datetime_ser,decoded_bytes])
+    writer.writerow([datetime_ser,*decoded_bytes])
             
 # Close port and CSV file to exit
 ser.close()

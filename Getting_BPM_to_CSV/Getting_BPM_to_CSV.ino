@@ -38,7 +38,7 @@ void loop() {
   if (pulseSensor.sawStartOfBeat()) {            // Constantly test to see if "a beat happened".
     int myBPM = pulseSensor.getBeatsPerMinute();  // Calls function on our pulseSensor object that returns BPM as an "int".
     time = millis();
-    Serial.println(String(time) +", "+ myBPM);
+    Serial.println(String(time) +","+ myBPM);
   }
 
   delay(20);       
