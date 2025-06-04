@@ -1,0 +1,175 @@
+import numpy as np
+import librosa
+from sklearn.decomposition import PCA
+import matplotlib.pyplot as plt
+from scipy.signal import find_peaks
+import csv
+
+# -------- PARAMETERS --------
+file_path = r"C:\Users\rcdav\Downloads\Hyperfine 1.m4a"  # Your audio file
+template_duration = 8.0  # seconds
+num_templates = 5
+search_start = 240       # seconds
+search_end = 300         # seconds
+threshold = 0.5
+
+# STFT params
+n_fft = 2048
+hop_length = 512
+
+# -------- LOAD AUDIO --------
+y, sr = librosa.load(file_path, sr=None)
+print(f"Audio loaded, duration: {len(y)/sr:.2f} seconds, sample rate: {sr}")
+
+# -------- FIND PEAKS TO SELECT TEMPLATE WINDOWS --------
+start_sample_search = int(search_start * sr)
+end_sample_search = int(search_end * sr)
+search_segment = y[start_sample_search:end_sample_search]
+
+# Smoothed energy to find peaks
+energy = np.abs(search_segment)
+window_smooth = int(0.1 * sr)  # 100ms smoothing
+energy_smooth = np.convolve(energy, np.ones(window_smooth)/window_smooth, mode='same')
+
+# Find peaks at least template_duration seconds apart
+peaks, _ = find_peaks(energy_smooth, distance=int(sr * template_duration))
+peaks = peaks[:num_templates]
+
+plt.figure(figsize=(12,4))
+plt.plot(energy_smooth, label='Smoothed Energy')
+plt.plot(peaks, energy_smooth[peaks], 'x', label='Detected Peaks')
+plt.title("Detected Energy Peaks in Search Range")
+plt.legend()
+plt.show()
+
+# -------- GENERATE PCA TEMPLATES --------
+pca_templates = []
+
+for peak_idx in peaks:
+    peak_sample = start_sample_search + peak_idx
+    start_sample = peak_sample
+    end_sample = start_sample + int(template_duration * sr)
+
+    segment = y[start_sample:end_sample]
+    D = librosa.stft(segment, n_fft=n_fft, hop_length=hop_length, window='hann')
+    S_db = librosa.amplitude_to_db(np.abs(D), ref=np.max)
+
+    pca = PCA(n_components=1)
+    pca_result = pca.fit_transform(S_db.T)
+    pca_vector = pca_result.flatten()
+
+    # Normalize
+    pca_vector -= np.mean(pca_vector)
+    pca_vector /= np.std(pca_vector)
+
+    # Shift so PCA vector starts at max value
+    max_idx = np.argmax(pca_vector)
+    shift_amount = pca_vector[max_idx]
+    pca_vector_shifted = pca_vector - shift_amount
+
+    pca_templates.append(pca_vector_shifted)
+
+# -------- AVERAGE PCA TEMPLATES --------
+if not pca_templates:
+    raise ValueError("No valid PCA templates were extracted.")
+
+max_len = max(len(vec) for vec in pca_templates)
+padded_templates = [np.pad(vec, (0, max_len - len(vec)), mode='constant') for vec in pca_templates]
+avg_pca_template = np.mean(padded_templates, axis=0)
+
+plt.figure(figsize=(12,4))
+plt.plot(avg_pca_template, color='darkgreen')
+plt.title("Averaged PCA Template")
+plt.xlabel("Frame Index")
+plt.ylabel("Amplitude (shifted)")
+plt.grid(True)
+plt.show()
+
+# -------- PCA ON FULL AUDIO --------
+D_full = librosa.stft(y, n_fft=n_fft, hop_length=hop_length, window='hann')
+S_db_full = librosa.amplitude_to_db(np.abs(D_full), ref=np.max)
+
+pca_full = PCA(n_components=1)
+pca_full_result = pca_full.fit_transform(S_db_full.T)
+pca_full_vector = pca_full_result.flatten()
+
+# Normalize full PCA vector
+pca_full_vector -= np.mean(pca_full_vector)
+pca_full_vector /= np.std(pca_full_vector)
+
+# Normalize avg template (safety)
+avg_pca_template -= np.mean(avg_pca_template)
+avg_pca_template /= np.std(avg_pca_template)
+
+# -------- CROSS-CORRELATION --------
+corr = np.correlate(pca_full_vector, avg_pca_template, mode='valid')
+
+# Normalize correlation to 0-1
+corr_norm = (corr - np.min(corr)) / (np.max(corr) - np.min(corr))
+
+# Time axis for correlation results
+times_corr = librosa.frames_to_time(np.arange(len(corr_norm)), sr=sr, hop_length=hop_length)
+
+# -------- THRESHOLDING AND BINARY WAVEFORM --------
+binary_waveform = (corr_norm > threshold).astype(int)
+
+# -------- FIND "ON" INTERVALS AND MERGE BLOCKS --------
+min_gap_sec = 5.0  # minimum gap duration between blocks to treat as separate
+
+# Find all "on" indices
+on_indices = np.where(binary_waveform == 1)[0]
+
+if len(on_indices) == 0:
+    print("No active binary regions detected.")
+else:
+    # Convert continuous runs of '1's into intervals (start_idx, end_idx)
+    intervals = []
+    start_idx = on_indices[0]
+    prev_idx = on_indices[0]
+
+    for idx in on_indices[1:]:
+        if idx == prev_idx + 1:
+            # still continuous
+            prev_idx = idx
+        else:
+            # gap detected, close previous interval
+            intervals.append((start_idx, prev_idx))
+            start_idx = idx
+            prev_idx = idx
+    intervals.append((start_idx, prev_idx))  # add last interval
+
+    # Merge intervals that are separated by less than min_gap_sec
+    merged_intervals = []
+    cur_start, cur_end = intervals[0]
+
+    for start, end in intervals[1:]:
+        gap = times_corr[start] - times_corr[cur_end]
+        if gap < min_gap_sec:
+            # merge intervals
+            cur_end = end
+        else:
+            merged_intervals.append((cur_start, cur_end))
+            cur_start, cur_end = start, end
+    merged_intervals.append((cur_start, cur_end))
+
+    # Print detected top-level blocks with times and durations
+    print("\nTop-level binary activity blocks (start, end, duration):")
+    for i, (start_idx, end_idx) in enumerate(merged_intervals):
+        start_time = times_corr[start_idx]
+        end_time = times_corr[end_idx]
+        duration = end_time - start_time
+        print(f"Block {i+1}: Start = {start_time:.2f}s, End = {end_time:.2f}s, Duration = {duration:.2f}s")
+
+# -------- SAVE BLOCK TIMES TO CSV --------
+csv_filename = "detected_blocks.csv"
+
+with open(csv_filename, mode='w', newline='') as file:
+    writer = csv.writer(file)
+    writer.writerow(["Block Start Time (s)", "Block End Time (s)"])  # header
+    
+    for start_idx, end_idx in merged_intervals:
+        start_time = times_corr[start_idx]
+        end_time = times_corr[end_idx]
+        writer.writerow([start_time, end_time])
+
+print(f"\nBlock start/end times saved to '{csv_filename}'")
