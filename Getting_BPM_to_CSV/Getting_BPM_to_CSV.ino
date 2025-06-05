@@ -37,10 +37,6 @@ void setup() {
   }
 }
 
-//struct Output {
- // int S;
-  //int T;
-//};
 
 void loop() {
   
@@ -48,11 +44,6 @@ void loop() {
   p.Signal = analogRead(PulseWire);  // Read the PulseSensor's value.
   p.time = millis();
   p.funnyno = 4222;
-
-  //Output output1;
-  //output1.S = Signal;
-  //output1.T = time;
-
   Serial.write((byte*)&p, sizeof(p));     // sends 12 bytes
   delay(20);       
 }
