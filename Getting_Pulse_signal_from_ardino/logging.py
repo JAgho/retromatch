@@ -12,7 +12,7 @@ writer = csv.writer(logging, delimiter=",",lineterminator="\n", quoting=csv.QUOT
 #No timeout specified; program will wait until all serial data is received from Arduino
 #Port description will vary according to operating system. Linux will be in the form /dev/ttyXXXX
 #Windows and MAC will be COMX
-ser = serial.Serial(port='COM8',baudrate=115200)
+ser = serial.Serial(port='COM3',baudrate=115200)
 
 #Write out a single character encoded in utf-8; this is defalt encoding for Arduino serial comms
 #This character tells the Arduino to start sending data
@@ -23,7 +23,7 @@ ser.flushInput()
 ser.flushOutput()
 
 file =  open("binary_stream.bin", "wb")
-
+logs = 0
 
 try :
         while (True):
@@ -33,10 +33,13 @@ try :
                 file.write(data)
                 # Unpack 3 unsigned longs (little-endian): Signal, FunnyNo, Time
                 signal, timestamp, funnyno = struct.unpack('<LLL', data)
-                print(f"Signal: {signal}, Time: {timestamp},Funny Number: {funnyno}")
+                logs += 1
+                if logs % 50 == 0:
+                    print(f"Signal: {signal}, Time: {timestamp},Funny Number: {funnyno}")
 
 except KeyboardInterrupt:
     print("Closing")
+    ser.close()
 
 finally:
     file.close()
