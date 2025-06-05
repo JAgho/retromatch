@@ -49,11 +49,21 @@ for start in range(0, len(rms) - window_size_frames + 1, step_size_frames):
     if len(window_peaks) >= min_peaks_per_window:
         peak_groups.append((start, end))
 
+# -------- NEW SECOND-TIER FILTER: WINDOWS WITH ≥25 PEAKS --------
+high_density_peak_groups = []
+for start, end in peak_groups:
+    window_peaks = peaks[(peaks >= start) & (peaks < end)]
+    if len(window_peaks) >= 25:
+        high_density_peak_groups.append((start, end))
+
+if not high_density_peak_groups:
+    raise ValueError("No windows found with at least 25 peaks for PCA template selection.")
+
 # -------- SELECT UP TO 5 HIGHEST PEAKS --------
 candidate_peak_indices = []
 candidate_peak_heights = []
 
-for start, end in peak_groups:
+for start, end in high_density_peak_groups:
     group_peaks = peaks[(peaks >= start) & (peaks < end)]
     candidate_peak_indices.extend(group_peaks)
     candidate_peak_heights.extend(rms[group_peaks])
