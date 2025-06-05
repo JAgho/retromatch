@@ -258,7 +258,7 @@ for i, (start, end) in enumerate(scanner_blocks):
     print(f"\nProcessing scanner block {i+1}: {start:.2f}s to {end:.2f}s")
 
     # Label segments in the current scanner block
-    df_block = run_audio_labeling(file_path, start_time=start+0.5*template_duration, end_time=end-0.5*template_duration)
+    df_block = run_audio_labeling(file_path, start_time=start+0*template_duration, end_time=end-0*template_duration)
     df_block["scanner_block"] = i + 1
     block_dfs.append(df_block)
 
