@@ -13,28 +13,66 @@ def load_audio(file_path):
     print(f"Loaded audio: {len(y)/sr:.2f}s @ {sr}Hz")
     return y, sr
 
+# ----------- STEP 2: Detect High-Energy Blocks -----------
+def detect_scanner_periods(y, sr, 
+                           scan_min_duration=60.0, 
+                           window_size=15.0, 
+                           step_size=5.0,
+                           energy_percentile=75,
+                           acf_threshold=0.3,
+                           merge_gap_sec=10.0):
+    """
+    Detect candidate scanner periods by checking for high energy and periodicity.
 
-def find_high_rms_window(y, sr, window_sec=40, step_sec=1):
-    rms = librosa.feature.rms(y=y, frame_length=2048, hop_length=512)[0]
-    times = librosa.frames_to_time(np.arange(len(rms)), sr=sr, hop_length=512)
-    
-    window_len = int(window_sec * sr / 512)
-    step_len = int(step_sec * sr / 512)
-    
-    best_score = -np.inf
-    best_start_idx = 0
+    Returns: List of (start_time, end_time) tuples.
+    """
+    hop_len = 512
+    frame_len = 2048
 
-    for i in range(0, len(rms) - window_len, step_len):
-        window = rms[i:i+window_len]
-        mean_energy = np.mean(window)
-        if mean_energy > best_score:
-            best_score = mean_energy
-            best_start_idx = i
+    rms = librosa.feature.rms(y=y, frame_length=frame_len, hop_length=hop_len)[0]
+    times = librosa.frames_to_time(np.arange(len(rms)), sr=sr, hop_length=hop_len)
 
-    start_time = times[best_start_idx]
-    end_time = times[best_start_idx + window_len]
-    print(f"Best window: {start_time:.2f}s to {end_time:.2f}s | Mean RMS: {best_score:.4f}")
-    return start_time, end_time
+    win_len = int(window_size * sr / hop_len)
+    step_len = int(step_size * sr / hop_len)
+    threshold = np.percentile(rms, energy_percentile)
+
+    candidate_blocks = []
+
+    for i in range(0, len(rms) - win_len, step_len):
+        window_rms = rms[i:i+win_len]
+        mean_energy = np.mean(window_rms)
+        if mean_energy < threshold:
+            continue
+
+        # Check for periodicity via autocorrelation
+        acf = librosa.autocorrelate(window_rms)
+        acf /= acf[0]  # Normalize
+        # Suppress first peak at lag=0 and look for second peak
+        peak_lag = np.argmax(acf[1:]) + 1
+        peak_val = acf[peak_lag]
+
+        if peak_val > acf_threshold:
+            start = times[i]
+            end = times[i + win_len]
+            candidate_blocks.append((start, end))
+
+    # --- Merge nearby or overlapping blocks ---
+    merged = []
+    for start, end in sorted(candidate_blocks):
+        if not merged:
+            merged.append([start, end])
+        else:
+            last_start, last_end = merged[-1]
+            if start <= last_end + merge_gap_sec:
+                merged[-1][1] = max(end, last_end)
+            else:
+                merged.append([start, end])
+
+    # Filter out blocks that are too short
+    final_blocks = [(s, e) for s, e in merged if (e - s) >= scan_min_duration]
+    print(f"Detected {len(final_blocks)} scanner periods.")
+
+    return final_blocks
 
 '''
 # ----------- STEP 2: Find a High-Energy Block for Template Extraction -----------
