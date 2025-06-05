@@ -1,75 +1,115 @@
 import numpy as np
 import librosa
-from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
 from scipy.signal import find_peaks
-import csv
+from sklearn.decomposition import PCA
 
 # -------- PARAMETERS --------
 file_path = r"C:\Users\rcdav\Downloads\Hyperfine 1.m4a"
-window_duration = 40.0  # seconds for high-energy block
+template_duration = 8.0  # seconds for PCA template extraction
+window_duration = 30.0   # seconds for energy block detection
 num_templates = 5
-threshold = 0.9  # <-- updated threshold
+threshold = 0.07  # RMS threshold
+min_peaks_per_window = 10
 
-# STFT params
 n_fft = 2048
 hop_length = 512
+hop_length_rms = 512
 
 # -------- LOAD AUDIO --------
 y, sr = librosa.load(file_path, sr=None)
 print(f"Audio loaded, duration: {len(y)/sr:.2f} seconds, sample rate: {sr}")
 
-# -------- FIND CONSISTENT HIGH-ENERGY BLOCK --------
-window_len_samples = int(window_duration * sr)
-step = int(1.0 * sr)  # 1-second steps
-scan_duration = 300  # seconds to scan from start
-scan_samples = min(len(y), int(scan_duration * sr))
-energy = np.abs(y[:scan_samples])
-smooth_window = int(0.1 * sr)  # 100ms smoothing
-energy_smooth = np.convolve(energy, np.ones(smooth_window)/smooth_window, mode='same')
+# -------- COMPUTE RMS ENERGY --------
+rms = librosa.feature.rms(y=y, frame_length=n_fft, hop_length=hop_length_rms)[0]
+times_rms = librosa.frames_to_time(np.arange(len(rms)), sr=sr, hop_length=hop_length_rms)
 
-best_score = -np.inf
-best_start_sample = 0
-min_energy_threshold = np.percentile(energy_smooth, 75)  # Only strong energy segments
-
-for i in range(0, len(energy_smooth) - window_len_samples, step):
-    segment = energy_smooth[i:i + window_len_samples]
-    mean_energy = np.mean(segment)
-    std_energy = np.std(segment)
-
-    if mean_energy < min_energy_threshold:
-        continue
-
-    score = mean_energy - std_energy
-    if score > best_score:
-        best_score = score
-        best_start_sample = i
-
-best_end_sample = best_start_sample + window_len_samples
-best_segment = y[best_start_sample:best_end_sample]
-print(f"Selected high-energy block: {best_start_sample / sr:.2f}s to {best_end_sample / sr:.2f}s")
-
-# -------- EXTRACT TEMPLATES FROM HIGH-ENERGY BLOCK --------
-energy = np.abs(best_segment)
-window_smooth = int(0.1 * sr)
-energy_smooth = np.convolve(energy, np.ones(window_smooth)/window_smooth, mode='same')
-peaks, _ = find_peaks(energy_smooth, distance=int(sr * window_duration / num_templates))
-peaks = peaks[:num_templates]
-
-plt.figure(figsize=(12,4))
-plt.plot(energy_smooth, label='Smoothed Energy')
-plt.plot(peaks, energy_smooth[peaks], 'x', label='Detected Peaks')
-plt.title("Detected Energy Peaks in High-Energy Block")
+# -------- PLOT RMS ENERGY --------
+plt.figure(figsize=(12, 4))
+plt.plot(times_rms, rms, label='RMS Energy')
+plt.axhline(y=threshold, color='gray', linestyle='--', label=f'Threshold = {threshold}')
+plt.xlabel('Time (s)')
+plt.ylabel('RMS Energy')
+plt.title('RMS Energy of Audio')
 plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+
+# -------- DETECT HIGH ENERGY WINDOWS --------
+window_size_frames = int(window_duration * sr / hop_length_rms)
+step_size_frames = window_size_frames
+
+peak_groups = []
+peaks, _ = find_peaks(rms, height=threshold)
+
+for start in range(0, len(rms) - window_size_frames + 1, step_size_frames):
+    end = start + window_size_frames
+    window_peaks = peaks[(peaks >= start) & (peaks < end)]
+    if len(window_peaks) >= min_peaks_per_window:
+        peak_groups.append((start, end))
+
+# -------- SELECT UP TO 5 HIGHEST PEAKS --------
+candidate_peak_indices = []
+candidate_peak_heights = []
+
+for start, end in peak_groups:
+    group_peaks = peaks[(peaks >= start) & (peaks < end)]
+    candidate_peak_indices.extend(group_peaks)
+    candidate_peak_heights.extend(rms[group_peaks])
+
+candidate_peak_indices = np.array(candidate_peak_indices)
+candidate_peak_heights = np.array(candidate_peak_heights)
+
+if len(candidate_peak_indices) == 0:
+    raise ValueError("No candidate peaks found in high-density windows.")
+
+sorted_indices = np.argsort(candidate_peak_heights)[::-1]
+sorted_peak_indices = candidate_peak_indices[sorted_indices]
+
+# -------- Enforce Minimum Spacing Between Peaks --------
+final_peaks = []
+last_added = -np.inf
+min_distance_frames = int(template_duration * sr / hop_length_rms)
+
+for idx in sorted_peak_indices:
+    if idx - last_added >= min_distance_frames:
+        final_peaks.append(idx)
+        last_added = idx
+    if len(final_peaks) >= num_templates:
+        break
+
+if not final_peaks:
+    raise ValueError("No valid PCA template peaks found after enforcing spacing.")
+
+final_peaks = np.array(final_peaks)
+final_peaks.sort()
+
+print(f"Selected peaks (RMS frames) for PCA templates: {final_peaks}")
+
+# -------- PLOT FINAL SELECTED PEAKS ON RMS --------
+plt.figure(figsize=(12, 4))
+plt.plot(times_rms, rms, label='RMS Energy')
+plt.plot(times_rms[final_peaks], rms[final_peaks], 'o', color='green', markersize=10, label='Final Selected Peaks')
+plt.axhline(y=threshold, color='gray', linestyle='--', label=f'Threshold = {threshold}')
+plt.xlabel('Time (s)')
+plt.ylabel('RMS Energy')
+plt.title('Final Selected Peaks on RMS Energy')
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
 plt.show()
 
 # -------- GENERATE PCA TEMPLATES --------
 pca_templates = []
 
-for peak_idx in peaks:
-    peak_sample = best_start_sample + peak_idx
+for peak_frame in final_peaks:
+    peak_sample = int(librosa.frames_to_samples(peak_frame, hop_length=hop_length_rms))
     start_sample = peak_sample
-    end_sample = start_sample + int(window_duration / num_templates * sr)
+    end_sample = start_sample + int(template_duration * sr)
+
+    if end_sample > len(y):
+        continue
 
     segment = y[start_sample:end_sample]
     D = librosa.stft(segment, n_fft=n_fft, hop_length=hop_length, window='hann')
@@ -81,6 +121,7 @@ for peak_idx in peaks:
 
     pca_vector -= np.mean(pca_vector)
     pca_vector /= np.std(pca_vector)
+
     max_idx = np.argmax(pca_vector)
     shift_amount = pca_vector[max_idx]
     pca_vector_shifted = pca_vector - shift_amount
@@ -95,15 +136,16 @@ max_len = max(len(vec) for vec in pca_templates)
 padded_templates = [np.pad(vec, (0, max_len - len(vec)), mode='constant') for vec in pca_templates]
 avg_pca_template = np.mean(padded_templates, axis=0)
 
-plt.figure(figsize=(12,4))
+plt.figure(figsize=(12, 4))
 plt.plot(avg_pca_template, color='darkgreen')
 plt.title("Averaged PCA Template")
 plt.xlabel("Frame Index")
 plt.ylabel("Amplitude (shifted)")
 plt.grid(True)
+plt.tight_layout()
 plt.show()
 
-# -------- PCA ON FULL AUDIO --------
+# -------- APPLY PCA TO FULL AUDIO --------
 D_full = librosa.stft(y, n_fft=n_fft, hop_length=hop_length, window='hann')
 S_db_full = librosa.amplitude_to_db(np.abs(D_full), ref=np.max)
 
@@ -122,37 +164,9 @@ corr = np.correlate(pca_full_vector, avg_pca_template, mode='valid')
 corr_norm = (corr - np.min(corr)) / (np.max(corr) - np.min(corr))
 times_corr = librosa.frames_to_time(np.arange(len(corr_norm)), sr=sr, hop_length=hop_length)
 
-# -------- THRESHOLDING --------
-above_thresh = corr_norm > threshold
-rising_edges = np.where(np.diff(above_thresh.astype(int)) == 1)[0] + 1
-falling_edges = np.where(np.diff(above_thresh.astype(int)) == -1)[0] + 1
-
-if above_thresh[0]:
-    rising_edges = np.insert(rising_edges, 0, 0)
-if above_thresh[-1]:
-    falling_edges = np.append(falling_edges, len(corr_norm) - 1)
-
-print("Detected similarity blocks (start frame idx, end frame idx):")
-for start, end in zip(rising_edges, falling_edges):
-    print(f"{start}, {end}")
-
-# -------- PLOT SIMILARITY WITH BLOCKS --------
-plt.figure(figsize=(14,5))
-plt.plot(times_corr, corr_norm, color='red', label='Similarity')
-plt.axhline(y=threshold, color='gray', linestyle='--', label=f'Threshold = {threshold}')
-for start, end in zip(rising_edges, falling_edges):
-    plt.axvspan(times_corr[start], times_corr[end], color='green', alpha=0.3)
-plt.title("Similarity between Averaged PCA Template and Full Audio")
-plt.xlabel("Time (seconds)")
-plt.ylabel("Similarity (0 to 1)")
-plt.ylim(0, 1.05)
-plt.legend()
-plt.grid(True)
-plt.tight_layout()
-plt.show()
-
-# -------- DETECT CONTIGUOUS ACTIVE BLOCKS --------
-binary_waveform = (corr_norm > threshold).astype(int)
+# -------- BINARY WAVEFORM & MERGED BLOCKS --------
+sim_threshold = 0.9
+binary_waveform = (corr_norm > sim_threshold).astype(int)
 min_gap_sec = 5.0
 on_indices = np.where(binary_waveform == 1)[0]
 
@@ -191,17 +205,4 @@ else:
         end_time = times_corr[end_idx]
         duration = end_time - start_time
         print(f"Block {i+1}: Start = {start_time:.2f}s, End = {end_time:.2f}s, Duration = {duration:.2f}s")
-
-# -------- SAVE BLOCK TIMES TO CSV --------
-csv_filename = "detected_blocks.csv"
-
-with open(csv_filename, mode='w', newline='') as file:
-    writer = csv.writer(file)
-    writer.writerow(["Block Start Time (s)", "Block End Time (s)"])
-    for start_idx, end_idx in merged_intervals:
-        start_time = times_corr[start_idx]
-        end_time = times_corr[end_idx]
-        writer.writerow([start_time, end_time])
-
-print(f"\nBlock start/end times saved to '{csv_filename}'")
 
