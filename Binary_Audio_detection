@@ -110,6 +110,37 @@ corr_norm = (corr - np.min(corr)) / (np.max(corr) - np.min(corr))
 # Time axis for correlation results
 times_corr = librosa.frames_to_time(np.arange(len(corr_norm)), sr=sr, hop_length=hop_length)
 
+# -------- PLOTTING BLOCKS OF SIMILIARITIES ---------
+above_thresh = corr_norm > threshold
+rising_edges = np.where(np.diff(above_thresh.astype(int)) == 1)[0] + 1
+falling_edges = np.where(np.diff(above_thresh.astype(int)) == -1)[0] + 1
+
+if above_thresh[0]:
+    rising_edges = np.insert(rising_edges, 0, 0)
+if above_thresh[-1]:
+    falling_edges = np.append(falling_edges, len(corr_norm) - 1)
+
+print("Detected similarity blocks (start frame idx, end frame idx):")
+for start, end in zip(rising_edges, falling_edges):
+    print(f"{start}, {end}")
+
+# -------- PLOT SIMILARITY WITH BLOCKS --------
+plt.figure(figsize=(14,5))
+plt.plot(times_corr, corr_norm, color='red', label='Similarity')
+plt.axhline(y=threshold, color='gray', linestyle='--', label=f'Threshold = {threshold}')
+
+for start, end in zip(rising_edges, falling_edges):
+    plt.axvspan(times_corr[start], times_corr[end], color='green', alpha=0.3)
+
+plt.title("Similarity between Averaged PCA Template and Full Audio with Threshold Blocks")
+plt.xlabel("Time (seconds)")
+plt.ylabel("Similarity (0 to 1)")
+plt.ylim(0, 1.05)
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show() 
+
 # -------- THRESHOLDING AND BINARY WAVEFORM --------
 binary_waveform = (corr_norm > threshold).astype(int)
 
