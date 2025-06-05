@@ -26,27 +26,30 @@ ser.flushInput()
 ser.flushOutput()
 
 
+file =  open("binary_stream.bin", "wb")
 
 
 try :
-    while (True):
 
-        if ser.in_waiting >= 12:
-            data = ser.read_until(expected= b'~\x10\x00\x00', size= 12)
-            #print("Raw bytes:", " ".join(f"{b:02X}" for b in data))
-            with open("binary_stream.bin", "wb") as file:
+        while (True):
+
+            if ser.in_waiting >= 12:
+                data = ser.read_until(expected= b'~\x10\x00\x00', size= 12)
+                #print("Raw bytes:", " ".join(f"{b:02X}" for b in data))
                 file.write(data)
 
-        
-            # Unpack 3 unsigned longs (little-endian): Signal, FunnyNo, Time
-            signal, timestamp, funnyno = struct.unpack('<LLL', data)
+            
+                # Unpack 3 unsigned longs (little-endian): Signal, FunnyNo, Time
+                signal, timestamp, funnyno = struct.unpack('<LLL', data)
 
-            print(f"Signal: {signal}, Time: {timestamp},Funny Number: {funnyno}")
+                print(f"Signal: {signal}, Time: {timestamp},Funny Number: {funnyno}")
 
 except KeyboardInterrupt:
+    print("Closing")
+
+finally:
 
     file.close()
 
-ser.close()
-logging.close()
-print("logging finished")
+
+    print("logging finished")
